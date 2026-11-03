@@ -1072,6 +1072,11 @@ func (r *harnessResource) Update(ctx context.Context, request resource.UpdateReq
 			}
 		}
 
+		if state.Tools.Length(fwtypes.CollectionLengthUnhandledAsZero) > 0 && config.Tools.Length(fwtypes.CollectionLengthUnhandledAsZero) == 0 {
+			// Clears configured tools. UpdateHarness keeps the existing tools when tools is omitted.
+			input.Tools = []awstypes.HarnessTool{}
+		}
+
 		_, err := conn.UpdateHarness(ctx, &input)
 		if err != nil {
 			smerr.AddError(ctx, &response.Diagnostics, err, smerr.ID, harnessID)

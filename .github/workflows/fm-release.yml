@@ -1,0 +1,43 @@
+# Builds this branch (hashicorp/terraform-provider-aws v6.68.0 plus the aws_bedrockagentcore_harness tools fix) for
+# linux_amd64 and publishes it as a release. The zip keeps HashiCorp's 6.68.0 file names, so fmagents can serve it
+# from a filesystem mirror as hashicorp/aws 6.68.0.
+# ubuntu-latest, not ubuntu-slim: slim has 1 CPU, 5 GB and a 15-minute job limit, which this build does not fit.
+name: FM release
+
+on:
+  push:
+    tags:
+      - "v*-fm*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build linux_amd64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          version="${version%%-fm*}"
+          bin="terraform-provider-aws_v${version}_x5"
+          mkdir -p dist/pkg
+          go build -o "dist/pkg/${bin}" -trimpath -buildvcs=false \
+            -ldflags "-s -w -X 'github.com/hashicorp/terraform-provider-aws/version.ProviderVersion=${version}'"
+          cp LICENSE dist/pkg/LICENSE.txt
+          (cd dist/pkg && zip -q -X "../terraform-provider-aws_${version}_linux_amd64.zip" "${bin}" LICENSE.txt)
+          (cd dist && sha256sum terraform-provider-aws_*.zip > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/SHA256SUMS --verify-tag --title "${GITHUB_REF_NAME}" \
+            --notes "hashicorp/terraform-provider-aws v6.68.0 with one change: aws_bedrockagentcore_harness sends an empty tools list to UpdateHarness when the last tool block is removed, so AWS drops the tools instead of keeping them. linux_amd64 only."
